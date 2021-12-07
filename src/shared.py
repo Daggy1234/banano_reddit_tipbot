@@ -77,14 +77,12 @@ try:
     REDDIT = praw.Reddit("bot1")
 except Exception as err:
     raise err
-    REDDIT = None
 
 class RandomUtil(object):
     @staticmethod
     def generate_seed() -> str:
         """Generate a random seed and return it"""
-        seed = "".join([secrets.choice(string.hexdigits) for i in range(64)]).upper()
-        return seed
+        return "".join([secrets.choice(string.hexdigits) for i in range(64)]).upper()
 
 class NumberUtil(object):
     @classmethod
@@ -190,8 +188,8 @@ create_db()
 # initiate the bot and all friendly subreddits
 def get_subreddits():
     results = Subreddit.select()
-    subreddits = [subreddit for subreddit in results]
-    if len(subreddits) == 0:
+    subreddits = list(results)
+    if not subreddits:
         return None
     subreddits_str = "+".join(result.subreddit for result in subreddits)
     return REDDIT.subreddit(subreddits_str)
@@ -224,34 +222,40 @@ class Validators():
     @staticmethod
     def validate_checksum_xrb(address: str) -> bool:
         """Given an xrb/nano/ban address validate the checksum"""
-        if (CURRENCY == "Nano" and ((address[:5] == 'nano_' and len(address) == 65) or (address[:4] == 'xrb_' and len(address) == 64))) or (CURRENCY == "Banano" and (address[:4] == 'ban_'  and len(address) == 64)):
-            # Populate 32-char account index
-            account_map = "13456789abcdefghijkmnopqrstuwxyz"
-            account_lookup = {}
-            for i in range(0, 32):
-                account_lookup[account_map[i]] = BitArray(uint=i, length=5)
+        if (
+            CURRENCY != "Nano"
+            or (address[:5] != 'nano_' or len(address) != 65)
+            and (address[:4] != 'xrb_' or len(address) != 64)
+        ) and (
+            CURRENCY != "Banano" or address[:4] != 'ban_' or len(address) != 64
+        ):
+            return False
+        # Populate 32-char account index
+        account_map = "13456789abcdefghijkmnopqrstuwxyz"
+        account_lookup = {
+            account_map[i]: BitArray(uint=i, length=5) for i in range(32)
+        }
 
-            # Extract key from address (everything after prefix)
-            if CURRENCY == "Nano":
-                acrop_key = address[4:-8] if address[:5] != 'nano_' else address[5:-8]
-            else:
-                acrop_key = address[4:-8]
-            # Extract checksum from address
-            acrop_check = address[-8:]
+        # Extract key from address (everything after prefix)
+        if CURRENCY == "Nano":
+            acrop_key = address[4:-8] if address[:5] != 'nano_' else address[5:-8]
+        else:
+            acrop_key = address[4:-8]
+        # Extract checksum from address
+        acrop_check = address[-8:]
 
-            # Convert base-32 (5-bit) values to byte string by appending each 5-bit value to the bitstring, essentially bitshifting << 5 and then adding the 5-bit value.
-            number_l = BitArray()
-            for x in range(0, len(acrop_key)):
-                number_l.append(account_lookup[acrop_key[x]])
-            number_l = number_l[4:]  # reduce from 260 to 256 bit (upper 4 bits are never used as account is a uint256)
+        # Convert base-32 (5-bit) values to byte string by appending each 5-bit value to the bitstring, essentially bitshifting << 5 and then adding the 5-bit value.
+        number_l = BitArray()
+        for x in range(len(acrop_key)):
+            number_l.append(account_lookup[acrop_key[x]])
+        number_l = number_l[4:]  # reduce from 260 to 256 bit (upper 4 bits are never used as account is a uint256)
 
-            check_l = BitArray()
-            for x in range(0, len(acrop_check)):
-                check_l.append(account_lookup[acrop_check[x]])
-            check_l.byteswap()  # reverse byte order to match hashing format
+        check_l = BitArray()
+        for x in range(len(acrop_check)):
+            check_l.append(account_lookup[acrop_check[x]])
+        check_l.byteswap()  # reverse byte order to match hashing format
 
-            # verify checksum
-            h = blake2b(digest_size=5)
-            h.update(number_l.bytes)
-            return h.hexdigest() == check_l.hex
-        return False
+        # verify checksum
+        h = blake2b(digest_size=5)
+        h.update(number_l.bytes)
+        return h.hexdigest() == check_l.hex

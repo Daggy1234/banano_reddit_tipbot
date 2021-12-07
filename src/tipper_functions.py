@@ -143,17 +143,14 @@ def allowed_request(username, seconds=30, num_requests=5):
     :return:
     """
     historyQ = History.select(History.sql_time).where(History.username == str(username)).order_by(History.id)
-    history_list = [h for h in historyQ]
+    history_list = list(historyQ)
     if len(history_list) < num_requests:
         return True
-    else:
-        i = 0
-        for h in history_list:
-            i+=1
-            if i == 5:
-                return (
-                    datetime.utcnow() - h.sql_time
-                ).total_seconds() > seconds
+    for i, h in enumerate(history_list, start=1):
+        if i == 5:
+            return (
+                datetime.utcnow() - h.sql_time
+            ).total_seconds() > seconds
 
 
 def check_registered_by_address(address):
@@ -211,16 +208,13 @@ def account_info(key, by_address=False):
     :return: dict - name, address, private_key, balance
     """
     foundAccount = True
-    if not by_address:
-        try:
+    try:
+        if not by_address:
             acct = Account.select().where(Account.username == key).get()
-        except Account.DoesNotExist:
-            foundAccount = False
-    else:
-        try:
+        else:
             acct = Account.select().where(Account.address == key).get()
-        except Account.DoesNotExist:
-            foundAccount = False
+    except Account.DoesNotExist:
+        foundAccount = False
     if foundAccount:
         return {
             "username": acct.username,
@@ -264,35 +258,32 @@ def parse_raw_amount(parsed_text, username=None):
     :param username: required if amount is 'all'
     :return:
     """
-    conversion = 1
     # check if the amount is 'all'. This will convert it to the proper int
     if parsed_text[1].lower() == "all":
         try:
             acct = Account.select(Account.address).where(Account.username == username).get()
             address = acct.address
-            balance = check_balance(address)
-            return balance
+            return check_balance(address)
         except Account.DoesNotExist:
             raise (TipError(None, text.NOT_OPEN))
 
     amount = parsed_text[1].lower()
 
-    # before converting to a number, make sure the amount doesn't have nan or inf in it
     if amount == "nan" or ("inf" in amount):
         raise TipError(
             None,
             f"Could not read your tip or send amount. Is '{parsed_text[1]}' a number?",
         )
-    else:
-        try:
-            amount = to_raw(float(amount) / conversion)
-        except:
-            raise TipError(
-                None,
-                f"Could not read your tip or send amount. Is '{amount}' a number, or is the "
-                "currency code valid? If you are trying to send Nano directly, omit "
-                "'Nano' from the amount (I will fix this in a future update).",
-            )
+    conversion = 1
+    try:
+        amount = to_raw(float(amount) / conversion)
+    except:
+        raise TipError(
+            None,
+            f"Could not read your tip or send amount. Is '{amount}' a number, or is the "
+            "currency code valid? If you are trying to send Nano directly, omit "
+            "'Nano' from the amount (I will fix this in a future update).",
+        )
     return amount
 
 
@@ -305,7 +296,6 @@ def parse_action(action_item):
         return "replay"
     elif not allowed_request(action_item.author, 30, 5):
         return "ignore"
-    # check if it's a non-username post and if it has a tip or donate command
     elif action_item.name.startswith("t1_") and bool(
         {parsed_text[0], parsed_text[-2], parsed_text[-3]}
         & (
@@ -316,19 +306,15 @@ def parse_action(action_item):
     ):
         LOGGER.info(f"Comment: {action_item.author} - " f"{action_item.body[:20]}")
         return "comment"
-    # otherwise, lets parse the message. t4 means either a message or username mention
     elif action_item.name.startswith("t4_"):
         # check if it is a message from the bot.
         if action_item.author == TIP_BOT_USERNAME:
-            # check if its a send, otherwise ignore
-            if action_item.body.startswith("send 0.001 "):
-                LOGGER.info(
-                    f"Faucet Tip: {action_item.author} - {action_item.body[:20]}"
-                )
-                return "faucet_tip"
-            else:
+            if not action_item.body.startswith("send 0.001 "):
                 return "ignore"
-        # otherwise, it's a normal message
+            LOGGER.info(
+                f"Faucet Tip: {action_item.author} - {action_item.body[:20]}"
+            )
+            return "faucet_tip"
         else:
             LOGGER.info(f"Comment: {action_item.author} - " f"{action_item.body[:20]}")
             return "message"
@@ -337,8 +323,8 @@ def parse_action(action_item):
 
 def message_in_database(message):
     query = History.select().where(History.comment_id == message.name)
-    results = [r for r in query]
-    if len(results) > 0:
+    results = list(query)
+    if results:
         LOGGER.info("Found previous messages for %s: " % message.name)
         return True
     return False

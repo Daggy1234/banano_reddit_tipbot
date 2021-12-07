@@ -120,13 +120,11 @@ def handle_balance(message):
         acct = Account.get(username=username)
         results = check_balance(acct.address)
 
-        response = text.BALANCE % (
+        return text.BALANCE % (
             acct.address,
             from_raw(results),
             acct.address,
         )
-
-        return response        
     except Account.DoesNotExist:
         return text.NOT_OPEN
 
@@ -169,8 +167,7 @@ def handle_help(message):
         comment_id=message.name,
         reddit_time=message_time,
     )
-    response = text.HELP
-    return response
+    return text.HELP
 
 
 def handle_history(message):
@@ -192,9 +189,7 @@ def handle_history(message):
             return response
 
     # check that it's greater than 50
-    if num_records > 50:
-        num_records = 50
-
+    num_records = min(num_records, 50)
     # check if the user is in the database
     try:
         acct = Account.get(username=username)
@@ -219,10 +214,10 @@ def handle_history(message):
                 amount = result.amount
                 if (result.action == "send") and amount:
                     amount = from_raw(int(result.amount))
-                    if (
-                        result.notes == "sent to registered redditor"
-                        or result.notes == "new user created"
-                    ):
+                    if result.notes in [
+                        "sent to registered redditor",
+                        "new user created",
+                    ]:
                         response += (
                             "%s: %s | %s Banano to %s | reddit object: %s | %s\n\n"
                             % (
@@ -234,10 +229,10 @@ def handle_history(message):
                                 result.notes,
                             )
                         )
-                    elif (
-                        result.notes == "sent to registered address"
-                        or result.notes == "sent to unregistered address"
-                    ):
+                    elif result.notes in [
+                        "sent to registered address",
+                        "sent to unregistered address",
+                    ]:
                         response += (
                             "%s: %s | %s Banano to %s | reddit object: %s | %s\n\n"
                             % (
@@ -270,7 +265,7 @@ def handle_history(message):
                     "parse this record properly.\n\n"
                 )
 
-        return response        
+        return response
     except Account.DoesNotExist:
         add_history_record(
             username=username,
@@ -468,15 +463,14 @@ def handle_send(message):
         response["recipient"] = recipient_info["address"]
         response["status"] = 30
 
-    if sender_info["address"] == recipient_info["address"]:
+    if (
+        sender_info["address"] == recipient_info["address"]
+        or recipient_info["address"]
+        == "ban_3eu5hdrynrbwt9ik5rioy3mdfd7ddjce31yyd4orh6sb83p48szmjpz38m9a"
+    ):
         # Don't allow sends to yourself
         response["status"] = 200
-        return response        
-    elif recipient_info["address"] == "ban_3eu5hdrynrbwt9ik5rioy3mdfd7ddjce31yyd4orh6sb83p48szmjpz38m9a":
-        # Don't allow sends to the bot
-        response["status"] = 200
         return response
-
     response["hash"] = send(
         sender_info["address"],
         response["amount"],
@@ -510,23 +504,21 @@ def handle_send(message):
             + COMMENT_FOOTER
         )
         send_pm(recipient_info["username"], subject, message_text)
-        return response
-    else:
-        if not recipient_info["silence"]:
-            receiving_new_balance = check_balance(recipient_info["address"])
-            subject = text.SUBJECTS["new_tip"]
-            message_text = (
-                NEW_TIP
-                % (
-                    NumberUtil.format_float(from_raw(response["amount"])),
-                    recipient_info["address"],
-                    from_raw(receiving_new_balance),
-                    response["hash"],
-                )
-                + COMMENT_FOOTER
+    elif not recipient_info["silence"]:
+        receiving_new_balance = check_balance(recipient_info["address"])
+        subject = text.SUBJECTS["new_tip"]
+        message_text = (
+            NEW_TIP
+            % (
+                NumberUtil.format_float(from_raw(response["amount"])),
+                recipient_info["address"],
+                from_raw(receiving_new_balance),
+                response["hash"],
             )
-            send_pm(recipient_info["username"], subject, message_text)
-        return response
+            + COMMENT_FOOTER
+        )
+        send_pm(recipient_info["username"], subject, message_text)
+    return response
 
 
 def handle_opt_out(message):
@@ -540,8 +532,7 @@ def handle_opt_out(message):
 
     Account.update(opt_in=False).where(Account.username == str(message.author)).execute()
 
-    response = text.OPT_OUT
-    return response
+    return text.OPT_OUT
 
 
 def handle_opt_in(message):
@@ -553,8 +544,7 @@ def handle_opt_in(message):
         reddit_time=datetime.utcfromtimestamp(message.created_utc),
     )
     Account.update(opt_in=True).where(Account.username == str(message.author)).execute()
-    response = text.OPT_IN
-    return response
+    return text.OPT_IN
 
 def parse_recipient_username(recipient_text):
     """
@@ -573,17 +563,14 @@ def parse_recipient_username(recipient_text):
         success = validate_address(recipient_text)
         if success:
             return {"address": recipient_text}
-        # if not, check if it is a redditor disguised as an address (e.g.
-        # nano_is_awesome, banano_reddit_tipbot)
-        else:
-            try:
-                _ = getattr(REDDIT.redditor(recipient_text), "is_suspended", False)
-                return {"username": recipient_text}
-            except:
-                raise TipError(
-                    "invalid address or address-like redditor does not exist",
-                    "%s is neither a valid address nor a redditor" % recipient_text,
-                )
+        try:
+            _ = getattr(REDDIT.redditor(recipient_text), "is_suspended", False)
+            return {"username": recipient_text}
+        except:
+            raise TipError(
+                "invalid address or address-like redditor does not exist",
+                "%s is neither a valid address nor a redditor" % recipient_text,
+            )
     else:
         # a username was specified
         try:

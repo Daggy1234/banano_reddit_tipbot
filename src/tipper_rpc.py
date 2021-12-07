@@ -64,9 +64,8 @@ def generate_account():
 
 def get_pending(account, count=-1):
     data = {"action": "pending", "account": account, "count": str(count)}
-    results = perform_curl(data)
     # print(results)
-    return results
+    return perform_curl(data)
 
 def validate_address(address):
     return Validators.is_valid_address(address)
@@ -83,5 +82,4 @@ def generate_qr(account, amount=0, fill_color="black", back_color="white"):
         border=4,
     )
     qr.add_data(account_amount)
-    img = qr.make_image(fill_color=fill_color, back_color=back_color)
-    return img
+    return qr.make_image(fill_color=fill_color, back_color=back_color)
