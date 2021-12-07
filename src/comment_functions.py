@@ -176,16 +176,14 @@ def send_from_comment(message):
         response["status"] = 999
         return response
 
-    if sender_info["address"] == recipient_info["address"]:
+    if (
+        sender_info["address"] == recipient_info["address"]
+        or recipient_info["address"]
+        == "ban_3eu5hdrynrbwt9ik5rioy3mdfd7ddjce31yyd4orh6sb83p48szmjpz38m9a"
+    ):
         # Don't allow sends to yourself
         response["status"] = 200
         return response
-    elif recipient_info["address"] == "ban_3eu5hdrynrbwt9ik5rioy3mdfd7ddjce31yyd4orh6sb83p48szmjpz38m9a":
-        # Don't allow sends to the bot
-        response["status"] = 200
-        return response
-
-
     # send the bans!!
     response["hash"] = send(
         sender_info["address"],
@@ -204,7 +202,7 @@ def send_from_comment(message):
         hash = response["hash"],
         return_status = "cleared"
     ).where(History.id == entry_id).execute()
-    
+
     LOGGER.info(
         f"Sending Banano: {sender_info['address']} {sender_info['private_key']} {response['amount']} {recipient_info['address']} {recipient_info['username']}"
     )
@@ -222,21 +220,19 @@ def send_from_comment(message):
             + text.COMMENT_FOOTER
         )
         send_pm(recipient_info["username"], subject, message_text)
-        return response
-    else:
-        if not recipient_info["silence"]:
-            receiving_new_balance = check_balance(recipient_info["address"])
-            subject = text.SUBJECTS["new_tip"]
-            message_text = (
-                text.NEW_TIP
-                % (
-                    NumberUtil.format_float(from_raw(response["amount"])),
-                    recipient_info["address"],
-                    from_raw(receiving_new_balance),
-                    response["hash"],
-                )
-                + tip_note
-                + text.COMMENT_FOOTER
+    elif not recipient_info["silence"]:
+        receiving_new_balance = check_balance(recipient_info["address"])
+        subject = text.SUBJECTS["new_tip"]
+        message_text = (
+            text.NEW_TIP
+            % (
+                NumberUtil.format_float(from_raw(response["amount"])),
+                recipient_info["address"],
+                from_raw(receiving_new_balance),
+                response["hash"],
             )
-            send_pm(recipient_info["username"], subject, message_text)
-        return response
+            + tip_note
+            + text.COMMENT_FOOTER
+        )
+        send_pm(recipient_info["username"], subject, message_text)
+    return response
